@@ -133,8 +133,6 @@ sub remove {
 
     return unless defined($key);
 
-    my $ns = $self->prefix . $self->namespace;
-
     my $skey = uri_escape($key);
 
     $self->redis->del($self->key_prefix . $skey);
@@ -143,10 +141,9 @@ sub remove {
 sub store {
     my ($self, $key, $data, $expires_in) = @_;
 
-    my $ns = $self->prefix . $self->namespace;
 
     my $skey = uri_escape($key);
-    my $realkey = $ns . '||' . $skey;
+    my $realkey = $self->key_prefix . $skey;
 
     $self->redis->sadd($self->prefix . 'chinamespaces', $self->namespace);
     $self->redis->set($realkey, $data);
