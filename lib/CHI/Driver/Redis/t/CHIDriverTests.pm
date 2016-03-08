@@ -33,7 +33,7 @@ sub clear_redis : Test(setup) {
 
 sub test_redis_object : Tests(1) {
     my $self  = shift;
-    my $cache = $self->new_cache(redis => Test::Mock::Redis->new());
+    my $cache = $self->new_cache();
     $cache->clear();
 }
 

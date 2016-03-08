@@ -29,6 +29,12 @@ has 'prefix'=> (
     default => '',
 );
 
+has 'key_prefix' => (
+    is => 'ro',
+    builder => '_build_key_prefix',
+    lazy => 1,
+);
+
 sub BUILD {
     my ($self, $params) = @_;
     foreach my $param (qw/redis redis_class redis_options prefix/) {
@@ -50,11 +56,16 @@ sub _build_redis {
     return $self->redis_class()->new(%{ $self->redis_options() });
 }
 
+sub _build_key_prefix {
+    my ($self) = @_;
+    return $self->prefix.$self->namespace.'||';
+}
+
 sub fetch {
     my ($self, $key) = @_;
 
     my $eskey = uri_escape($key);
-    my $realkey = $self->prefix . $self->namespace . '||' . $eskey;
+    my $realkey = $self->key_prefix . $eskey;
     my $val = $self->redis->get($realkey);
     return $val;
 }
@@ -64,12 +75,10 @@ sub fetch_multi_hashref {
 
     return unless scalar(@{ $keys });
 
-    my $ns = $self->prefix . $self->namespace;
-
     my @keys;
     foreach my $k (@$keys) {
         my $esk = uri_escape($k);
-        my $key = $ns . '||' . $esk;
+        my $key = $self->key_prefix . $esk;
         push @keys, $key;
     }
 
@@ -88,16 +97,27 @@ sub fetch_multi_hashref {
 sub get_keys {
     my ($self) = @_;
 
-    my @keys = $self->redis->smembers($self->prefix . $self->namespace);
+    my @keys = $self->_get_keys();
+    my $quoted_key_prefix = quotemeta($self->key_prefix);
+    @keys = map { $_ =~ s/^$quoted_key_prefix//g && $_ } @keys;
 
-    my @unesckeys = ();
+    my @unesckeys = map { uri_unescape($_) } @keys;
 
-    foreach my $k (@keys) {
-        # Getting an empty key here for some reason...
-        next unless defined $k;
-        push(@unesckeys, uri_unescape($k));
-    }
     return @unesckeys;
+}
+
+sub _get_keys {
+    my ($self) = @_;
+
+    my $cursor = "0";
+    my @keys;
+    do {
+        my @result = $self->redis->scan($cursor, 'match', $self->key_prefix.'*');
+        $cursor = shift(@result);
+        push @keys, @{shift(@result)};
+    } while($cursor ne "0");
+
+    return @keys;
 }
 
 sub get_namespaces {
@@ -115,8 +135,7 @@ sub remove {
 
     my $skey = uri_escape($key);
 
-    $self->redis->srem($ns, $skey);
-    $self->redis->del($ns . '||' . $skey);
+    $self->redis->del($self->key_prefix . $skey);
 }
 
 sub store {
@@ -128,7 +147,6 @@ sub store {
     my $realkey = $ns . '||' . $skey;
 
     $self->redis->sadd($self->prefix . 'chinamespaces', $self->namespace);
-    $self->redis->sadd($ns, $skey);
     $self->redis->set($realkey, $data);
 
     if (defined($expires_in)) {
@@ -139,12 +157,10 @@ sub store {
 sub clear {
     my ($self) = @_;
 
-    my $ns = $self->prefix . $self->namespace;
-    my @keys = $self->redis->smembers($ns);
+    my @keys = $self->_get_keys();
 
     foreach my $k (@keys) {
-        $self->redis->srem($ns, $k);
-        $self->redis->del($ns . '||' . $k);
+        $self->redis->del($k);
     }
 }
 
