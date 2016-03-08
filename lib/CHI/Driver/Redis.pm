@@ -3,6 +3,7 @@ package CHI::Driver::Redis;
 use Moo;
 use Redis;
 use URI::Escape qw(uri_escape uri_unescape);
+use List::MoreUtils qw(uniq);
 
 extends 'CHI::Driver';
 
@@ -117,7 +118,8 @@ sub _get_keys {
         push @keys, @{shift(@result)};
     } while($cursor ne "0");
 
-    return @keys;
+    # SCAN can return duplicate keys
+    return uniq(@keys);
 }
 
 sub get_namespaces {
