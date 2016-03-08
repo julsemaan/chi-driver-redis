@@ -110,13 +110,14 @@ sub get_keys {
 sub _get_keys {
     my ($self) = @_;
 
-    my $cursor = "0";
+    my $cursor = undef;
     my @keys;
-    do {
+    while(!defined($cursor) || $cursor ne "0") {
+        $cursor //= "0";
         my @result = $self->redis->scan($cursor, 'match', $self->key_prefix.'*');
         $cursor = shift(@result);
         push @keys, @{shift(@result)};
-    } while($cursor ne "0");
+    } 
 
     # SCAN can return duplicate keys
     return uniq(@keys);
